@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Select Frame Coordinates</title>
+    <style>
+        canvas { border: 1px solid #ccc; cursor: crosshair; }
+        .instructions { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="instructions">
+        <h3>Click on frame corners in order:</h3>
+        <ol>
+            <li>Top-Left</li>
+            <li>Top-Right</li>
+            <li>Bottom-Right</li>
+            <li>Bottom-Left</li>
+        </ol>
+    </div>
+    <canvas id="frameCanvas" width="1024" height="1024"></canvas>
+    <button onclick="saveCoordinates()">Save Coordinates</button>
+    <script>
+        let corners = [];
+        const canvas = document.getElementById('frameCanvas');
+        const ctx = canvas.getContext('2d');
+        let img = new Image();
+        img.src = `/static/frames/__FRAME_ID__.jpg`;
+        img.onload = function() {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        canvas.addEventListener('click', function(e) {
+            if (corners.length < 4) {
+                const rect = canvas.getBoundingClientRect();
+                const x = Math.round((e.clientX - rect.left) * img.width / canvas.width);
+                const y = Math.round((e.clientY - rect.top) * img.height / canvas.height);
+                corners.push([x, y]);
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.arc(e.offsetX, e.offsetY, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                if (corners.length === 4) {
+                    ctx.strokeStyle = 'lime';
+                    ctx.beginPath();
+                    for (let i = 0; i < 4; i++) {
+                        const [cx, cy] = corners[i];
+                        const px = cx * canvas.width / img.width;
+                        const py = cy * canvas.height / img.height;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+            }
+        });
+        function saveCoordinates() {
+            if (corners.length !== 4) {
+                alert('Please select all 4 corners.');
+                return;
+            }
+            fetch(`/frames/__FRAME_ID__/coordinates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    coordinates: {
+                        top_left: corners[0],
+                        top_right: corners[1],
+                        bottom_right: corners[2],
+                        bottom_left: corners[3]
+                    }
+                })
+            }).then(r => r.json()).then(data => {
+                alert('Coordinates saved!');
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "session_id": "f83a0ee5-d16c-417e-b048-284d62e6581b",
+  "frame_id": "0ef727b7-5946-4bd6-9fc2-3919a39f856f",
+  "processed_count": 0,
+  "failed_count": 1,
+  "created_at": "2025-12-23T09:30:33.180820",
+  "results": [
+    {
+      "original_filename": "twosrdfw8onrbj3s7wc6?_a=BAMADKce0",
+      "status": "failed",
+      "error": "Frame processing failed"
+    }
+  ]
+}

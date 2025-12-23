@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Frame Selector</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        .layout {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 350px;
+            background: #2a2a2a;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+        }
+        .main-canvas {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0px;
+            background: #000;
+        }
+        .header {
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+            color: #4ECDC4;
+        }
+        .header p {
+            margin: 0;
+            color: #aaa;
+            font-size: 14px;
+        }
+        .instructions {
+            background: #1e3a52;
+            border: 1px solid #2a5f8f;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+        .instructions h3 {
+            margin: 0 0 10px 0;
+            color: #4ECDC4;
+            font-size: 16px;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            line-height: 1.4;
+        }
+        .keyboard-commands {
+            background: #3d2e1f;
+            border: 1px solid #8b6914;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .keyboard-commands ul {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+        }
+        .keyboard-commands li {
+            margin: 5px 0;
+        }
+        .canvas-wrapper {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+        #frameCanvas {
+            border: 3px solid #444;
+            cursor: crosshair;
+            max-width: 100%;
+            max-height: calc(100vh - 40px);
+            display: block;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+        #frameCanvas.dragging {
+            cursor: move;
+        }
+        .controls {
+            margin: 15px 0;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            margin: 8px 0;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #545b62;
+            transform: translateY(-2px);
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover:not(:disabled) {
+            background-color: #1e7e34;
+            transform: translateY(-2px);
+        }
+        .status {
+            margin: 15px 0;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .status-info {
+            background: #17a2b8;
+            color: white;
+        }
+        .status-success {
+            background: #28a745;
+            color: white;
+        }
+        .status-error {
+            background: #dc3545;
+            color: white;
+        }
+        .coordinates-info {
+            background: #333;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            flex: 1;
+        }
+        .coordinates-info h4 {
+            margin: 0 0 10px 0;
+            color: #4ECDC4;
+            font-size: 14px;
+        }
+        .coord-item {
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 8px;
+            background: #2a2a2a;
+            border-radius: 4px;
+            border-left: 3px solid;
+        }
+        .hint {
+            background: #2d2d2d;
+            border: 1px solid #555;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 15px 0;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .hint strong {
+            color: #4ECDC4;
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <div class="header">
+                <h1>🖼️ Frame Selector</h1>
+                <p>Click or drag corners for precision</p>
+            </div>
+            
+            <div class="instructions">
+                <h3>📋 How to Use</h3>
+                <p><strong>Click 4 corners in order:</strong></p>
+                <ol>
+                    <li><strong>Top-Left</strong> corner</li>
+                    <li><strong>Top-Right</strong> corner</li>
+                    <li><strong>Bottom-Right</strong> corner</li>
+                    <li><strong>Bottom-Left</strong> corner</li>
+                </ol>
+                
+                <div class="keyboard-commands">
+                    <strong>⌨️ Keyboard Shortcuts:</strong>
+                    <ul>
+                        <li><strong>S</strong> - Save coordinates</li>
+                        <li><strong>R</strong> - Reset selection</li>
+                        <li><strong>ESC</strong> - Clear selection</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="hint">
+                <strong>💡 Pro Tip:</strong> After placing all corners, you can click and drag any corner point to adjust its position for perfect alignment!
+            </div>
+            
+            <div id="status" class="status status-info">
+                Click on the image to start selecting corners...
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-secondary" onclick="resetSelection()">🔄 Reset Selection (R)</button>
+                <button class="btn btn-success" onclick="saveCoordinates()" id="saveBtn" disabled>💾 Save Coordinates (S)</button>
+            </div>
+            
+            <div class="coordinates-info" id="coordsInfo" style="display: none;">
+                <h4>📍 Selected Coordinates:</h4>
+                <div id="coordsList"></div>
+            </div>
+        </div>
+        
+        <div class="main-canvas">
+            <div class="canvas-wrapper">
+                <canvas id="frameCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let corners = [];
+        let imageLoaded = false;
+        let originalWidth = 0;
+        let originalHeight = 0;
+        let loadedImage = null;
+        let isDragging = false;
+        let draggedCornerIndex = -1;
+        const CORNER_RADIUS = 12;
+        const CORNER_HOVER_RADIUS = 20;
+        
+        const frameId = '__FRAME_ID__';
+        
+        const canvas = document.getElementById('frameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusDiv = document.getElementById('status');
+        const saveBtn = document.getElementById('saveBtn');
+        const coordsInfo = document.getElementById('coordsInfo');
+        const coordsList = document.getElementById('coordsList');
+        
+        const cornerLabels = ["Top-Left", "Top-Right", "Bottom-Right", "Bottom-Left"];
+        const cornerColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4"];
+        
+        // Load image information first
+        fetch(`/frames/${frameId}/info`)
+            .then(response => response.json())
+            .then(data => {
+                originalWidth = data.image_dimensions.width;
+                originalHeight = data.image_dimensions.height;
+                loadImage(data.image_url);
+            })
+            .catch(error => {
+                console.error('Error loading frame info:', error);
+                updateStatus('Error loading frame information', 'error');
+            });
+        
+        function loadImage(imageUrl) {
+            const img = new Image();
+            img.onload = function() {
+                loadedImage = this;
+                
+                // Calculate canvas size to fit viewport (100vh)
+                const maxCanvasWidth = window.innerWidth - 400; // Subtract sidebar width
+                const maxCanvasHeight = window.innerHeight - 60; // Small padding
+                
+                const aspectRatio = this.naturalWidth / this.naturalHeight;
+                let canvasWidth, canvasHeight;
+                
+                if (aspectRatio > maxCanvasWidth / maxCanvasHeight) {
+                    canvasWidth = maxCanvasWidth;
+                    canvasHeight = maxCanvasWidth / aspectRatio;
+                } else {
+                    canvasHeight = maxCanvasHeight;
+                    canvasWidth = maxCanvasHeight * aspectRatio;
+                }
+                
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+                
+                redrawCanvas();
+                imageLoaded = true;
+                updateStatus('🖼️ Image loaded. Click to select corners...', 'info');
+            };
+            
+            img.onerror = function() {
+                updateStatus('❌ Error loading image', 'error');
+            };
+            
+            img.src = imageUrl;
+        }
+        
+        function redrawCanvas() {
+            if (!loadedImage) return;
+            
+            // Clear and redraw image
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(loadedImage, 0, 0, canvas.width, canvas.height);
+            
+            // Draw connecting lines
+            if (corners.length > 1) {
+                drawConnectingLines();
+            }
+            
+            // Draw corner points (small invisible hit targets)
+            corners.forEach((corner, index) => {
+                const [origX, origY] = corner;
+                const x = (origX / originalWidth) * canvas.width;
+                const y = (origY / originalHeight) * canvas.height;
+                drawCornerPoint(x, y, index);
+            });
+        }
+        
+        function drawCornerPoint(x, y, index) {
+            // Draw a small subtle marker instead of numbered circle
+            // Just a small cross/marker at the exact corner point
+            ctx.save();
+            
+            // Draw a small circle marker
+            ctx.fillStyle = cornerColors[index];
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Draw label with background (offset from corner)
+            const label = cornerLabels[index];
+            ctx.font = 'bold 12px Arial';
+            const labelWidth = ctx.measureText(label).width;
+            
+            // Position label outside the frame
+            let labelX = x + 15;
+            let labelY = y - 15;
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(labelX, labelY - 10, labelWidth + 8, 18);
+            
+            ctx.fillStyle = cornerColors[index];
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, labelX + 4, labelY);
+            
+            ctx.restore();
+        }
+        
+        // Mouse event handlers for dragging
+        canvas.addEventListener('mousedown', function(e) {
+            if (!imageLoaded) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Check if clicking on an existing corner
+            const clickedCornerIndex = getCornerAtPosition(x, y);
+            
+            if (clickedCornerIndex !== -1) {
+                // Start dragging existing corner
+                isDragging = true;
+                draggedCornerIndex = clickedCornerIndex;
+                canvas.classList.add('dragging');
+                updateStatus(`🎯 Dragging ${cornerLabels[clickedCornerIndex]} corner...`, 'info');
+            } else if (corners.length < 4) {
+                // Add new corner
+                const originalX = Math.round((x / canvas.width) * originalWidth);
+                const originalY = Math.round((y / canvas.height) * originalHeight);
+                
+                corners.push([originalX, originalY]);
+                
+                console.log(`Corner ${corners.length} (${cornerLabels[corners.length - 1]}): (${originalX}, ${originalY})`);
+                
+                if (corners.length === 4) {
+                    updateStatus('✅ Frame selection complete! Drag corners to adjust or save.', 'success');
+                    saveBtn.disabled = false;
+                } else {
+                    updateStatus(`📍 Selected ${corners.length}/4 corners. Click for ${cornerLabels[corners.length]}.`, 'info');
+                }
+                
+                redrawCanvas();
+                updateCoordinatesDisplay();
+            }
+        });
+        
+        canvas.addEventListener('mousemove', function(e) {
+            if (!imageLoaded) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (isDragging && draggedCornerIndex !== -1) {
+                // Update corner position
+                const originalX = Math.round((x / canvas.width) * originalWidth);
+                const originalY = Math.round((y / canvas.height) * originalHeight);
+                
+                // Clamp to image bounds
+                const clampedX = Math.max(0, Math.min(originalWidth, originalX));
+                const clampedY = Math.max(0, Math.min(originalHeight, originalY));
+                
+                corners[draggedCornerIndex] = [clampedX, clampedY];
+                
+                redrawCanvas();
+                updateCoordinatesDisplay();
+            } else {
+                // Update cursor based on hover
+                const hoveredCorner = getCornerAtPosition(x, y);
+                if (hoveredCorner !== -1) {
+                    canvas.style.cursor = 'move';
+                } else if (corners.length < 4) {
+                    canvas.style.cursor = 'crosshair';
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+            }
+        });
+        
+        canvas.addEventListener('mouseup', function(e) {
+            if (isDragging) {
+                isDragging = false;
+                draggedCornerIndex = -1;
+                canvas.classList.remove('dragging');
+                if (corners.length === 4) {
+                    updateStatus('✅ Frame adjusted! Drag corners to fine-tune or save.', 'success');
+                }
+            }
+        });
+        
+        canvas.addEventListener('mouseleave', function(e) {
+            if (isDragging) {
+                isDragging = false;
+                draggedCornerIndex = -1;
+                canvas.classList.remove('dragging');
+            }
+        });
+        
+        function getCornerAtPosition(x, y) {
+            for (let i = 0; i < corners.length; i++) {
+                const [origX, origY] = corners[i];
+                const cornerX = (origX / originalWidth) * canvas.width;
+                const cornerY = (origY / originalHeight) * canvas.height;
+                
+                const distance = Math.sqrt(Math.pow(x - cornerX, 2) + Math.pow(y - cornerY, 2));
+                
+                if (distance <= CORNER_HOVER_RADIUS) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+        
+        function drawConnectingLines() {
+            ctx.save();
+            
+            // Draw solid white outline
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            for (let i = 0; i < corners.length; i++) {
+                const [origX, origY] = corners[i];
+                const canvasX = (origX / originalWidth) * canvas.width;
+                const canvasY = (origY / originalHeight) * canvas.height;
+                
+                if (i === 0) {
+                    ctx.moveTo(canvasX, canvasY);
+                } else {
+                    ctx.lineTo(canvasX, canvasY);
+                }
+            }
+            
+            if (corners.length === 4) {
+                ctx.closePath();
+            }
+            
+            ctx.stroke();
+            
+            // Draw dashed colored line on top
+            ctx.strokeStyle = '#4ECDC4';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            
+            ctx.beginPath();
+            for (let i = 0; i < corners.length; i++) {
+                const [origX, origY] = corners[i];
+                const canvasX = (origX / originalWidth) * canvas.width;
+                const canvasY = (origY / originalHeight) * canvas.height;
+                
+                if (i === 0) {
+                    ctx.moveTo(canvasX, canvasY);
+                } else {
+                    ctx.lineTo(canvasX, canvasY);
+                }
+            }
+            
+            if (corners.length === 4) {
+                ctx.closePath();
+            }
+            
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.restore();
+        }
+        
+        function resetSelection() {
+            corners = [];
+            isDragging = false;
+            draggedCornerIndex = -1;
+            saveBtn.disabled = true;
+            coordsInfo.style.display = 'none';
+            canvas.classList.remove('dragging');
+            
+            redrawCanvas();
+            
+            updateStatus('🔄 Selection reset. Click to select corners...', 'info');
+            console.log('Selection reset');
+        }
+        
+        function saveCoordinates() {
+            if (corners.length !== 4) {
+                updateStatus('❌ Please select all 4 corners before saving.', 'error');
+                return;
+            }
+            
+            const coordinatesData = {
+                coordinates: {
+                    top_left: corners[0],
+                    top_right: corners[1],
+                    bottom_right: corners[2],
+                    bottom_left: corners[3]
+                }
+            };
+            
+            updateStatus('💾 Saving coordinates...', 'info');
+            saveBtn.disabled = true;
+            
+            fetch(`/frames/${frameId}/coordinates`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(coordinatesData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.coordinates_saved) {
+                    updateStatus('✅ Coordinates saved successfully! Visual representation created.', 'success');
+                    console.log('Coordinates saved successfully!');
+                    
+                    setTimeout(() => {
+                        if (confirm('✅ Coordinates saved successfully!\n\nWould you like to go back to the frames list?')) {
+                            window.location.href = '/frames/manage';
+                        } else {
+                            saveBtn.disabled = false;
+                        }
+                    }, 1500);
+                } else {
+                    updateStatus('❌ Error saving coordinates. Please try again.', 'error');
+                    saveBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error saving coordinates:', error);
+                updateStatus('❌ Error saving coordinates. Please try again.', 'error');
+                saveBtn.disabled = false;
+            });
+        }
+        
+        function updateStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status status-${type}`;
+        }
+        
+        function updateCoordinatesDisplay() {
+            if (corners.length === 0) {
+                coordsInfo.style.display = 'none';
+                return;
+            }
+            
+            coordsInfo.style.display = 'block';
+            coordsList.innerHTML = '';
+            
+            corners.forEach((corner, index) => {
+                const div = document.createElement('div');
+                div.className = 'coord-item';
+                div.style.borderLeftColor = cornerColors[index];
+                div.innerHTML = `<strong style="color: ${cornerColors[index]}">${index + 1}. ${cornerLabels[index]}:</strong> <span style="color: #aaa;">(${corner[0]}, ${corner[1]})</span>`;
+                coordsList.appendChild(div);
+            });
+        }
+        
+        // Window resize handler
+        window.addEventListener('resize', function() {
+            if (loadedImage) {
+                const maxCanvasWidth = window.innerWidth - 400;
+                const maxCanvasHeight = window.innerHeight - 60;
+                
+                const aspectRatio = loadedImage.naturalWidth / loadedImage.naturalHeight;
+                let canvasWidth, canvasHeight;
+                
+                if (aspectRatio > maxCanvasWidth / maxCanvasHeight) {
+                    canvasWidth = maxCanvasWidth;
+                    canvasHeight = maxCanvasWidth / aspectRatio;
+                } else {
+                    canvasHeight = maxCanvasHeight;
+                    canvasWidth = maxCanvasHeight * aspectRatio;
+                }
+                
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+                
+                redrawCanvas();
+            }
+        });
+        
+        // Keyboard event handlers
+        document.addEventListener('keydown', function(e) {
+            switch(e.key.toLowerCase()) {
+                case 's':
+                    e.preventDefault();
+                    saveCoordinates();
+                    break;
+                case 'r':
+                    e.preventDefault();
+                    resetSelection();
+                    break;
+                case 'escape':
+                    e.preventDefault();
+                    resetSelection();
+                    break;
+            }
+        });
+        
+        // Add focus to enable keyboard events
+        window.addEventListener('load', function() {
+            document.body.setAttribute('tabindex', '0');
+            document.body.focus();
+        });
+    </script>
+</body>
+</html>

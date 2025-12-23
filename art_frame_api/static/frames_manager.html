@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frame Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 20px;
+        }
+        .upload-section {
+            background: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-success:hover {
+            background-color: #1e7e34;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-info:hover {
+            background-color: #138496;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .frames-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .frame-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .frame-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .frame-name {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .frame-status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+        .status-configured {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .frame-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .frame-actions .btn {
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        .visual-preview {
+            width: 100%;
+            height: 150px;
+            object-fit: contain;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🖼️ Frame Management</h1>
+            <p>Upload and configure frame images with coordinate selection</p>
+        </div>
+        
+        <div class="upload-section">
+            <h3>📤 Upload New Frame</h3>
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="frameImage">Frame Image:</label>
+                    <input type="file" id="frameImage" name="frame_image" class="form-control" accept="image/*" required>
+                </div>
+                <div class="form-group">
+                    <label for="frameName">Frame Name:</label>
+                    <input type="text" id="frameName" name="frame_name" class="form-control" placeholder="Enter a descriptive name for this frame" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Frame</button>
+            </form>
+        </div>
+        
+        <div id="uploadStatus" style="display: none;"></div>
+        
+        <div class="frames-section">
+            <h3>📋 Existing Frames</h3>
+            <div id="framesContainer" class="loading">
+                Loading frames...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🚀 JavaScript loaded successfully!');
+        
+        // Test basic functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 DOM Content Loaded');
+            const container = document.getElementById('framesContainer');
+            if (container) {
+                console.log('✅ framesContainer found');
+                container.innerHTML = '<div style="color: blue;">JavaScript is working! Loading frames...</div>';
+            } else {
+                console.error('❌ framesContainer not found!');
+            }
+        });
+        
+        // Load frames on page load
+        window.addEventListener('load', function() {
+            console.log('🌍 Window loaded, calling loadFrames');
+            loadFrames();
+        });
+        
+        // Also try loading after a small delay as fallback
+        setTimeout(function() {
+            console.log('⏰ Timeout triggered, calling loadFrames');
+            loadFrames();
+        }, 1000);
+        
+        // Handle frame upload
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            const frameImage = document.getElementById('frameImage').files[0];
+            const frameName = document.getElementById('frameName').value;
+            
+            if (!frameImage || !frameName) {
+                showUploadStatus('Please fill in all fields', 'error');
+                return;
+            }
+            
+            formData.append('frame_image', frameImage);
+            formData.append('frame_name', frameName);
+            
+            try {
+                showUploadStatus('Uploading frame...', 'info');
+                
+                const response = await fetch('/frames/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showUploadStatus(`Frame uploaded successfully! <a href="${result.selection_url}" class="btn btn-success">Select Coordinates</a>`, 'success');
+                    document.getElementById('uploadForm').reset();
+                    loadFrames(); // Reload frames list
+                } else {
+                    showUploadStatus('Error uploading frame', 'error');
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                showUploadStatus('Error uploading frame', 'error');
+            }
+        });
+        
+        async function loadFrames() {
+            console.log('🔄 Starting to load frames...');
+            const container = document.getElementById('framesContainer');
+            
+            try {
+                console.log('📡 Fetching frames from /frames endpoint...');
+                const response = await fetch('/frames');
+                console.log('📡 Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📦 Data received:', data);
+                console.log('📦 Number of frames:', data.frames ? data.frames.length : 0);
+                
+                if (data.frames && data.frames.length > 0) {
+                    console.log('✅ Found frames, creating grid...');
+                    container.innerHTML = '';
+                    container.className = 'frames-grid';
+                    
+                    data.frames.forEach((frame, index) => {
+                        console.log(`🖼️ Creating card for frame ${index + 1}:`, frame.frame_name);
+                        const frameCard = createFrameCard(frame);
+                        container.appendChild(frameCard);
+                    });
+                    console.log('✅ All frame cards added to container');
+                } else {
+                    console.log('❌ No frames found');
+                    container.innerHTML = '<div class="alert alert-info">No frames uploaded yet. Upload your first frame above!</div>';
+                    container.className = '';
+                }
+            } catch (error) {
+                console.error('❌ Error loading frames:', error);
+                container.innerHTML = `<div class="alert alert-error">Error loading frames: ${error.message}</div>`;
+                container.className = '';
+            }
+        }
+        
+        function createFrameCard(frame) {
+            console.log('🏗️ Creating card for frame:', frame);
+            const card = document.createElement('div');
+            card.className = 'frame-card';
+            
+            const hasCoordinates = frame.has_coordinates || frame.coordinates;
+            const statusClass = hasCoordinates ? 'status-configured' : 'status-pending';
+            const statusText = hasCoordinates ? '✅ Coordinates Set' : '⏳ Needs Configuration';
+            
+            console.log(`🏗️ Frame: ${frame.frame_name}, Has coordinates: ${hasCoordinates}`);
+            
+            card.innerHTML = `
+                <img src="/frames/images/${frame.frame_id}.jpg" alt="${frame.frame_name}" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBmb3VuZDwvdGV4dD48L3N2Zz4='">
+                <div class="frame-name">${frame.frame_name}</div>
+                <span class="frame-status ${statusClass}">${statusText}</span>
+                <div class="frame-actions">
+                    ${hasCoordinates ? 
+                        `<a href="/frames/${frame.frame_id}/interactive-select" class="btn btn-info">✏️ Edit Coordinates</a>
+                         <a href="/frames/${frame.frame_id}/visual" class="btn btn-secondary" target="_blank">👁️ View Visual</a>
+                         <a href="/frames/${frame.frame_id}/coordinates-file" class="btn btn-secondary" download>💾 Download JSON</a>` 
+                        : 
+                        `<a href="/frames/${frame.frame_id}/interactive-select" class="btn btn-success">🎯 Select Coordinates</a>`
+                    }
+                </div>
+                ${hasCoordinates && frame.visual_file ? `<img src="/frames/${frame.frame_id}/visual" class="visual-preview" alt="Coordinate visualization">` : ''}
+            `;
+            
+            return card;
+        }
+        
+        function showUploadStatus(message, type) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = `alert alert-${type === 'error' ? 'danger' : type}`;
+            statusDiv.innerHTML = message;
+            
+            // Auto-hide after 5 seconds for non-success messages
+            if (type !== 'success') {
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>
