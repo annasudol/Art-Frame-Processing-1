@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from typing import List
 import uuid
@@ -9,6 +9,7 @@ import json
 from PIL import Image
 
 from core import save_frame_image, save_coordinates, save_coordinates_enhanced, process_batch_artwork, get_frame_list, get_job_status, get_job_results
+import r2_storage
 
 app = FastAPI(title="Art Frame Processing API")
 
@@ -48,8 +49,15 @@ async def serve_frame_image(frame_filename: str):
     frame_path = os.path.join(FRAMES_DIR, frame_filename)
     if os.path.exists(frame_path):
         return FileResponse(frame_path, media_type="image/jpeg")
-    else:
-        raise HTTPException(status_code=404, detail="Frame image not found")
+    # Try R2 storage
+    if r2_storage.is_enabled():
+        r2_key = f"frames/{frame_filename}"
+        try:
+            data = r2_storage.download_bytes(r2_key)
+            return Response(content=data, media_type="image/jpeg")
+        except Exception:
+            pass
+    raise HTTPException(status_code=404, detail="Frame image not found")
 
 @app.post("/frames/upload")
 async def upload_frame(frame_image: UploadFile = File(...), frame_name: str = Form(...)):
@@ -73,8 +81,9 @@ async def interactive_select_coordinates(frame_id: str):
 @app.get("/frames/{frame_id}/info")
 async def get_frame_info(frame_id: str):
     """Get frame information including image dimensions"""
-    frame_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
-    if not os.path.exists(frame_path):
+    from core import _ensure_frame_local
+    frame_path = _ensure_frame_local(frame_id)
+    if not frame_path:
         return JSONResponse(status_code=404, content={"error": "Frame not found"})
     
     with Image.open(frame_path) as img:
@@ -159,17 +168,28 @@ async def process_artwork_with_frame(frame_id: str, artwork_images: List[UploadF
 
 @app.get("/results/{session_id}/{filename}")
 async def get_result_file(session_id: str, filename: str):
-    """Serve processed artwork result files"""
+    """Serve processed artwork result files (local or R2)"""
     file_path = os.path.join("storage/results", session_id, filename)
-    
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    return FileResponse(
-        file_path,
-        media_type="image/jpeg",
-        filename=filename
-    )
+
+    # Try local file first
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="image/jpeg", filename=filename)
+
+    # Try R2 storage
+    if r2_storage.is_enabled():
+        r2_key = f"results/{session_id}/{filename}"
+        try:
+            # Redirect to public URL if available, otherwise proxy
+            public_url = os.environ.get("R2_PUBLIC_URL", "")
+            if public_url:
+                return RedirectResponse(r2_storage.get_public_url(r2_key))
+            data = r2_storage.download_bytes(r2_key)
+            return Response(content=data, media_type="image/jpeg",
+                           headers={"Content-Disposition": f'inline; filename="{filename}"'})
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=404, detail="File not found")
 
 @app.get("/process/status/{job_id}")
 async def process_status(job_id: str):
@@ -185,8 +205,14 @@ async def get_frame_visual(frame_id: str):
     visual_path = os.path.join(FRAMES_DIR, f"{frame_id}_visual.jpg")
     if os.path.exists(visual_path):
         return FileResponse(visual_path, media_type="image/jpeg")
-    else:
-        return JSONResponse(status_code=404, content={"error": "Visual not found"})
+    # Try R2
+    if r2_storage.is_enabled():
+        try:
+            data = r2_storage.download_bytes(f"frames/{frame_id}_visual.jpg")
+            return Response(content=data, media_type="image/jpeg")
+        except Exception:
+            pass
+    return JSONResponse(status_code=404, content={"error": "Visual not found"})
 
 @app.get("/frames/{frame_id}/coordinates-file")
 async def get_coordinates_file(frame_id: str):
@@ -194,8 +220,15 @@ async def get_coordinates_file(frame_id: str):
     coords_path = os.path.join(FRAMES_DIR, f"{frame_id}_coordinates.json")
     if os.path.exists(coords_path):
         return FileResponse(coords_path, media_type="application/json", filename=f"frame_{frame_id}_coordinates.json")
-    else:
-        return JSONResponse(status_code=404, content={"error": "Coordinates file not found"})
+    # Try R2
+    if r2_storage.is_enabled():
+        try:
+            data = r2_storage.download_bytes(f"frames/{frame_id}_coordinates.json")
+            return Response(content=data, media_type="application/json",
+                           headers={"Content-Disposition": f'attachment; filename="frame_{frame_id}_coordinates.json"'})
+        except Exception:
+            pass
+    return JSONResponse(status_code=404, content={"error": "Coordinates file not found"})
 
 # Bulk upload endpoints (stubs)
 @app.post("/frames/bulk/upload")

@@ -2,15 +2,27 @@ import os
 import uuid
 import shutil
 import json
+import tempfile
 import cv2
 import numpy as np
 from typing import List
 from datetime import datetime
 
+import r2_storage
+
 FRAMES_DIR = "storage/frames"
 UPLOADS_DIR = "storage/uploads"
 RESULTS_DIR = "storage/results"
 DB_PATH = "database/frames.json"
+TMP_DIR = tempfile.gettempdir()
+
+
+def _ensure_jpg_extension(filename: str) -> str:
+    """Ensure filename has a .jpg extension so OpenCV can determine the codec."""
+    base, ext = os.path.splitext(filename)
+    if ext.lower() not in ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'):
+        return base + '.jpg'
+    return filename
 
 # Helper to load/save frame metadata
 def load_db():
@@ -25,14 +37,22 @@ def save_db(data):
 
 def save_frame_image(frame_image, frame_name):
     frame_id = str(uuid.uuid4())
-    frame_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
-    with open(frame_path, "wb") as f:
+    local_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
+    with open(local_path, "wb") as f:
         shutil.copyfileobj(frame_image.file, f)
+
+    # Upload to R2 if configured
+    r2_key = None
+    if r2_storage.is_enabled():
+        r2_key = f"frames/{frame_id}.jpg"
+        r2_storage.upload_file(local_path, r2_key)
+
     db = load_db()
     db["frames"].append({
         "frame_id": frame_id,
         "frame_name": frame_name,
-        "image_path": frame_path,
+        "image_path": local_path,
+        "r2_key": r2_key,
         "coordinates": None
     })
     save_db(db)
@@ -47,14 +67,28 @@ def save_coordinates(frame_id, coordinates):
             frame["coordinates"] = coordinates
     save_db(db)
 
+def _ensure_frame_local(frame_id):
+    """Make sure the frame image exists locally, downloading from R2 if needed."""
+    local_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
+    if os.path.exists(local_path):
+        return local_path
+    if r2_storage.is_enabled():
+        r2_key = f"frames/{frame_id}.jpg"
+        os.makedirs(FRAMES_DIR, exist_ok=True)
+        r2_storage.download_file(r2_key, local_path)
+        if os.path.exists(local_path):
+            return local_path
+    return None
+
+
 def save_coordinates_enhanced(frame_id, coordinates):
     """Enhanced coordinate saving with visual representation like the original script"""
     try:
-        # Load frame image
-        frame_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
-        if not os.path.exists(frame_path):
+        # Load frame image (download from R2 if not local)
+        frame_path = _ensure_frame_local(frame_id)
+        if not frame_path:
             return False
-            
+
         image = cv2.imread(frame_path)
         if image is None:
             return False
@@ -88,7 +122,12 @@ def save_coordinates_enhanced(frame_id, coordinates):
         # Save visual representation
         visual_path = os.path.join(FRAMES_DIR, f"{frame_id}_visual.jpg")
         save_visual_representation(image, corners_array, visual_path)
-        
+
+        # Upload coordinate artifacts to R2
+        if r2_storage.is_enabled():
+            r2_storage.upload_file(coords_file, f"frames/{frame_id}_coordinates.json", "application/json")
+            r2_storage.upload_file(visual_path, f"frames/{frame_id}_visual.jpg")
+
         # Update database
         db = load_db()
         for frame in db["frames"]:
@@ -169,19 +208,19 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
             if frame["frame_id"] == frame_id:
                 frame_data = frame
                 break
-        
+
         if not frame_data or not frame_data.get("coordinates"):
             return {"success": False, "error": "Frame not found or coordinates not set"}
-        
-        # Load frame image
-        frame_path = os.path.join(FRAMES_DIR, f"{frame_id}.jpg")
-        if not os.path.exists(frame_path):
+
+        # Load frame image (download from R2 if not local)
+        frame_path = _ensure_frame_local(frame_id)
+        if not frame_path:
             return {"success": False, "error": "Frame image not found"}
-        
+
         background = cv2.imread(frame_path)
         if background is None:
             return {"success": False, "error": "Could not load frame image"}
-        
+
         # Get frame coordinates in the correct order
         coords = frame_data["coordinates"]
         frame_corners = np.array([
@@ -190,31 +229,46 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
             coords["bottom_right"],
             coords["bottom_left"]
         ], dtype="float32")
-        
-        # Create results directory for this processing session
+
+        # Use /tmp for all processing work
         session_id = str(uuid.uuid4())
-        results_dir = os.path.join(RESULTS_DIR, session_id)
-        os.makedirs(results_dir, exist_ok=True)
-        
+        tmp_results_dir = os.path.join(TMP_DIR, "art_results", session_id)
+        os.makedirs(tmp_results_dir, exist_ok=True)
+
+        # Also keep local results dir for non-R2 fallback
+        local_results_dir = os.path.join(RESULTS_DIR, session_id)
+        os.makedirs(local_results_dir, exist_ok=True)
+
         processed_count = 0
         failed_count = 0
         results = []
         download_urls = []
-        
+
         # Process each artwork image
         for artwork_file in artwork_images:
             try:
-                # Save uploaded artwork temporarily
-                temp_art_path = os.path.join(results_dir, f"temp_{artwork_file.filename}")
+                # Ensure proper extension for OpenCV
+                safe_filename = _ensure_jpg_extension(artwork_file.filename)
+
+                # Save uploaded artwork to /tmp
+                temp_art_path = os.path.join(tmp_results_dir, f"temp_{safe_filename}")
                 with open(temp_art_path, "wb") as f:
                     shutil.copyfileobj(artwork_file.file, f)
-                
-                # Create output filename
-                output_filename = f"framed_{artwork_file.filename}"
-                output_path = os.path.join(results_dir, output_filename)
-                
-                # Apply frame processing (like batch_process_frames.py)
+
+                # Create output filename with guaranteed extension
+                output_filename = _ensure_jpg_extension(f"framed_{artwork_file.filename}")
+                output_path = os.path.join(tmp_results_dir, output_filename)
+
+                # Apply frame processing
                 if apply_art_to_frame_core(temp_art_path, frame_corners, background, output_path):
+                    # Upload result to R2
+                    if r2_storage.is_enabled():
+                        r2_key = f"results/{session_id}/{output_filename}"
+                        r2_storage.upload_file(output_path, r2_key)
+                    else:
+                        # Copy to local results dir as fallback
+                        shutil.copy2(output_path, os.path.join(local_results_dir, output_filename))
+
                     processed_count += 1
                     results.append({
                         "original_filename": artwork_file.filename,
@@ -229,10 +283,11 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
                         "status": "failed",
                         "error": "Frame processing failed"
                     })
-                
-                # Clean up temp file
-                os.remove(temp_art_path)
-                
+
+                # Clean up temp input file
+                if os.path.exists(temp_art_path):
+                    os.remove(temp_art_path)
+
             except Exception as e:
                 failed_count += 1
                 results.append({
@@ -240,7 +295,7 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
                     "status": "failed",
                     "error": str(e)
                 })
-        
+
         # Save processing metadata
         metadata = {
             "session_id": session_id,
@@ -250,10 +305,19 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
             "created_at": datetime.now().isoformat(),
             "results": results
         }
-        
-        with open(os.path.join(results_dir, "metadata.json"), "w") as f:
+
+        metadata_path = os.path.join(tmp_results_dir, "metadata.json")
+        with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
-        
+
+        if r2_storage.is_enabled():
+            r2_storage.upload_file(metadata_path, f"results/{session_id}/metadata.json", "application/json")
+        else:
+            shutil.copy2(metadata_path, os.path.join(local_results_dir, "metadata.json"))
+
+        # Clean up /tmp working directory
+        shutil.rmtree(tmp_results_dir, ignore_errors=True)
+
         return {
             "success": True,
             "session_id": session_id,
@@ -262,7 +326,7 @@ async def apply_frame_to_artwork(frame_id, artwork_images):
             "results": results,
             "download_urls": download_urls
         }
-        
+
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -273,29 +337,32 @@ def apply_art_to_frame_core(art_image_path, frame_corners, background_image, out
         art_img = cv2.imread(art_image_path)
         if art_img is None:
             return False
-        
+
         # Create source points (art image corners)
         h, w = art_img.shape[:2]
         src_points = np.array([[0, 0], [w-1, 0], [w-1, h-1], [0, h-1]], dtype="float32")
-        
+
         # Calculate perspective transform from art to frame
         M = cv2.getPerspectiveTransform(src_points, frame_corners)
-        
+
         # Warp the art image to fit the frame
         result = background_image.copy()
         warped_art = cv2.warpPerspective(art_img, M, (result.shape[1], result.shape[0]))
-        
+
         # Create mask for the frame area
         mask = np.zeros(result.shape[:2], dtype=np.uint8)
         cv2.fillConvexPoly(mask, np.int32(frame_corners), 255)
-        
+
         # Apply the art to the frame area
         result[mask > 0] = warped_art[mask > 0]
-        
+
+        # Ensure output path has a valid image extension
+        output_path = _ensure_jpg_extension(output_path)
+
         # Save the result
         cv2.imwrite(output_path, result)
         return True
-        
+
     except Exception as e:
         print(f"Error processing {art_image_path}: {e}")
         return False
